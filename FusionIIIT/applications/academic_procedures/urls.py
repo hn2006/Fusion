@@ -1,6 +1,6 @@
 from django.conf.urls import url, include
 from . import views
-appname = 'procedures'
+app_name = 'procedures'
 urlpatterns = [
     url(r'^api/', include('applications.academic_procedures.api.urls')),
     url(r'^$', views.academic_procedures_redirect, name='redirect'),

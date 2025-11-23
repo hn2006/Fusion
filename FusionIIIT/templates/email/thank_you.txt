@@ -1,0 +1,8 @@
+Dear {{ prof_name }},
+
+Thank you for submitting your review of “{{ thesis_title }}”.
+
+Your feedback is greatly appreciated.
+
+Regards,
+Thesis Committee

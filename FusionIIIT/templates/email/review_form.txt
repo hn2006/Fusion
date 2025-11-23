@@ -1,0 +1,10 @@
+Dear {{ prof_name }},
+
+Thank you for accepting to review “{{ thesis_title }}”.
+
+Please submit your review using the link below (do not share this link):
+
+{{ review_url }}
+
+Thank you,
+Thesis Committee

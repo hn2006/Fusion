@@ -1,0 +1,13 @@
+Dear {{ prof_name }},
+
+You are invited to review the thesis titled “{{ thesis_title }}”.
+
+Please click one of the links below (do not share this link with anyone):
+
+Accept: {{ accept_url }}
+Reject: {{ reject_url }}
+
+This invitation expires on {{ expires_at }}.
+
+Thank you,
+Thesis Committee IIIT Jabalpur

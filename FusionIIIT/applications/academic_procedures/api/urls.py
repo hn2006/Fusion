@@ -30,9 +30,6 @@ urlpatterns = [
     url(r'^stu/registrations_drop/$', views.student_registrations_for_drop, name='student_registrations_drop'),
     url(r'^stu/drop-course/$',   views.drop_course, name='drop_course'),
     url(r'^stu/calendar/student/$', views.student_calendar_view, name='student-calendar'),
-    url(r'^stu/course_reg/semesters/$', views.student_registration_semesters_view, name='student-course_reg-semesters'),
-    url(r'^stu/feedback_questions/$', views.student_questions, name='student-questions'),
-    url(r'^stu/feedback_submit/$', views.student_submit, name='student-feedback-submit'),
 
 
 
@@ -59,20 +56,11 @@ urlpatterns = [
     url(r'^acad/change-requests/allocate_all/$', views.allocate_all, name='allocate_all'),
     url(r'^acad/replacement-requests/$', views.admin_list_requests, name='admin_list_requests'),
     url(r'^acad/student-search/$',views.student_search,name='student-search'),
-    url(r"^acad/feedback_courses/$",    views.admin_course_list,   name="admin-course-list"),
-    url(r"^acad/stats/all/$",  views.admin_all_stats,     name="admin-all-stats"),
-    url(r'^acad/batch_change/batches/$', views.list_batches, name='batch-list'),
-    url(r'^acad/batch_change/students/$', views.list_students_in_batch, name='batch-students'),
-    url(r'^acad/batch_change/apply/$', views.apply_batch_changes, name='batch-apply'),
-    url(r'^acad/promote/students/$', views.list_students_in_batch_semester_promotion, name='promote-batch-students'),
-    url(r'^acad/promote/apply/$', views.apply_promotion, name='promote-apply'),
     url(r'^get_next_sem_courses' , views.get_next_sem_courses , name= 'get_next_sem_courses'),
 
 
     url(r'^fac/view_assigned_courses' , views.faculty_assigned_courses , name = 'faculty_assigned_courses'),
     # url(r'^fac/get_roll_list' , views.fetch_roll_list , name = 'fetch_roll_list'),
-    url(r"^inst/courses/$", views.inst_courses, name="inst-courses"),
-    url(r"^inst/stats/all/$", views.inst_all_stats, name="inst-all-stats"),
 
 
 
@@ -106,4 +94,60 @@ urlpatterns = [
 
     # pg TA
     url(r'^ta/stipends/$',             views.ta_stipends),
+
+    #Thesis Registration endpoints
+
+    # Student endpoints
+    url(r'^stu/thesis/$', views.student_thesis_api, name='student-thesis'),
+    url(r'^stu/thesis/download/$', views.student_download_pdf_api, name='student-thesis-download'),
+
+    # Faculty list for dropdowns
+    url(r'^faculty/$', views.faculty_list_api, name='faculty-list'),
+
+    # Supervisor endpoints
+    url(r'^supervisor/dashboard/$', views.supervisor_thesis_topic_dashboard, name='supervisor-dashboard'),
+    url(r'^supervisor/thesis/(?P<pk>\d+)/review/$', views.supervisor_review_api, name='supervisor-thesis-review'),
+
+    # HOD endpoints
+    url(r'^hod/dashboard/$', views.hod_dashboard, name='hod-dashboard'),
+    url(r'^hod/thesis/(?P<pk>\d+)/review/$', views.hod_review_api, name='hod-thesis-review'),
+
+    # Dean endpoints
+    url(r'^dean/dashboard/$', views.dean_dashboard, name='dean-dashboard'),
+    url(r'^dean/thesis/(?P<pk>\d+)/review/$', views.dean_review_api, name='dean-thesis-review'),
+    url(r'^dean/thesis/(?P<pk>\d+)/generate/$', views.dean_generate_pdf_api, name='dean-thesis-generate'),
+
+    #Seminar endpoints
+
+    #student
+    url(r'^seminar-reports/$', views.list_reports),
+    url(r'^seminar-reports/create/(?P<thesis_pk>\d+)/$', views.create_report),
+    url(r'^seminar-reports/(?P<pk>\d+)/$', views.detail_report),
+
+    # rpc
+    url(r'^seminar-reports/list/$', views.rpc_seminar_list),
+    url(r'^seminar-reports/(?P<pk>\d+)/rpc-detail/$', views.rpc_detail),
+    url(r'^seminar-reports/(?P<pk>\d+)/rpc-consent/$', views.rpc_consent),
+    url(r'^seminar-reports/(?P<pk>\d+)/rpc-finalize/$', views.rpc_finalize),
+
+
+    #thesis submission
+
+    # Student
+    url(r'^thesis/submit/$', views.thesis_submit, name='thesis_submit'),
+
+    url(r'^thesis/supervisor-dashboard/$', views.supervisor_dashboard, name='supervisor_dashboard'),
+    url(r'^thesis/submission-detail/(?P<submission_id>\d+)/$', views.supervisor_submission_detail, name='supervisor_submission_detail'),
+    url(r'^thesis/supervisor-assign/$', views.supervisor_assign, name='supervisor_assign'),
+
+    # Director
+    url(r'^thesis/director-dashboard/$', views.director_dashboard, name='director_dashboard'),
+    url(r'^thesis/director-approve/$', views.director_approve, name='director_approve'),
+
+    # Professor Invitation
+    url(r'^invitation/(?P<token>[0-9a-f-]+)/(?P<action>accept|reject)/$',
+        views.invitation_action, name='invitation_action'),
+
+    # Review Form
+    url(r'^review/(?P<token>[0-9a-f-]+)/$', views.review_detail, name='review_detail'),
 ]

@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404, HttpResponse
 from django.http import HttpResponse
 from django.http import JsonResponse
 from decimal import Decimal, ROUND_HALF_UP
-from applications.academic_procedures.models import(course_registration, course_replacement)
+from applications.academic_procedures.models import(course_registration, course_replacement, course_replacement)
 from applications.programme_curriculum.models import Course as Courses ,  Batch, CourseInstructor
 from applications.examination.models import(hidden_grades , ResultAnnouncement)
 from applications.academic_information.models import(Student)
@@ -38,12 +38,8 @@ from django.db.models import Case, When, IntegerField
 grade_conversion = {
     "O": 1.0, "A+": 1.0, "A": 0.9, "B+": 0.8, "B": 0.7,
     "C+": 0.6, "C": 0.5, "D+": 0.4, "D": 0.3, "F": 0.2, "S": 0.0,
-    **{f"A{i}": Decimal(str(0.9 + i * 0.01)) for i in range(1, 11)},
-    **{f"B{i}": Decimal(str(0.8 + i * 0.01)) for i in range(1, 11)},
-    **{
-        f"{x/10:.1f}": Decimal(f"{x/100:.2f}")
-        for x in range(20, 101)
-    }
+    **{f"A{i}": round(9.0 + i * 0.1, 1) for i in range(1, 11)},
+    **{f"B{i}": round(8.0 + i * 0.1, 1) for i in range(1, 11)}
 }
 
 ALLOWED_GRADES = {
@@ -55,28 +51,27 @@ ALLOWED_GRADES = {
 }
 
 PBI_AND_BTP_ALLOWED_GRADES = {
-    f"{x:.1f}" for x in [i / 10 for i in range(20, 101)]
-}
+    f"A{i}" for i in range(1, 11)
+}.union({
+    f"B{i}" for i in range(1, 11)
+})
 
 def round_from_last_decimal(number, decimal_places=1):
     d = Decimal(str(number))
-    return Decimal(d).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP)
-    # d = Decimal(str(number))
-    # current_places = abs(d.as_tuple().exponent)
+    current_places = abs(d.as_tuple().exponent)
 
-    # # Keep rounding from the last decimal place until we reach the desired one
-    # while current_places > decimal_places:
-    #     quantize_str = '0.' + '0' * (current_places - 1) + '1'
-    #     d = d.quantize(Decimal(quantize_str), rounding=ROUND_HALF_UP)
-    #     current_places -= 1
+    # Keep rounding from the last decimal place until we reach the desired one
+    while current_places > decimal_places:
+        quantize_str = '0.' + '0' * (current_places - 1) + '1'
+        d = d.quantize(Decimal(quantize_str), rounding=ROUND_HALF_UP)
+        current_places -= 1
 
-    # # Final rounding to target place
-    # final_quantize = '0.' + '0' * (decimal_places - 1) + '1'
-    # return float(d.quantize(Decimal(final_quantize), rounding=ROUND_HALF_UP))
-    
+    # Final rounding to target place
+    final_quantize = '0.' + '0' * (decimal_places - 1) + '1'
+    return float(d.quantize(Decimal(final_quantize), rounding=ROUND_HALF_UP))
 
 def calculate_spi_for_student(student, selected_semester, semester_type):
-    semester_unit = Decimal('0')
+    semester_unit = 0
     grades = (
         Student_grades.objects
             .filter(
@@ -95,18 +90,17 @@ def calculate_spi_for_student(student, selected_semester, semester_type):
             )
             .order_by('semester', 'semester_type_order')
     )
-    total_points = Decimal('0')
-    total_credits = Decimal('0')
+    total_points = 0
+    total_credits = 0
     for g in grades:
-        credit = Decimal(str(g.course_id.credit))
+        credit = g.course_id.credit
         factor = grade_conversion.get(g.grade.strip(), -1)
         if factor >= 0:
             if factor != 0:
-                factor = Decimal(str(factor))
                 total_points += factor * credit
                 total_credits += credit
             semester_unit += credit
-    return round_from_last_decimal(Decimal('10') * (total_points / total_credits)) if total_credits else 0, semester_unit, (total_points*10)
+    return round_from_last_decimal(10 * (total_points / total_credits)) if total_credits else 0, semester_unit
 
 def trace_registration(reg_id, mapping):
     seen = set()
@@ -116,7 +110,7 @@ def trace_registration(reg_id, mapping):
     return reg_id
 
 def calculate_cpi_for_student(student, selected_semester, semester_type):
-    total_unit = Decimal('0')
+    total_unit = 0
     if selected_semester % 2 == 0 and semester_type == 'Summer Semester':
         grades = (
             Student_grades.objects
@@ -181,19 +175,18 @@ def calculate_cpi_for_student(student, selected_semester, semester_type):
             continue
         original_reg_id = trace_registration(reg_id, reg_replacement_map)
         grade_groups[original_reg_id].append(g)
-    total_points = Decimal('0')
-    total_credits = Decimal('0')
+    total_points = 0
+    total_credits = 0
     for orig_reg, g_list in grade_groups.items():
         best_record = max(g_list, key=lambda r: grade_conversion.get(r.grade.strip(), -1))
         grade_factor = grade_conversion.get(best_record.grade.strip(), -1)
-        credit = Decimal(str(getattr(best_record.course_id, 'credit', 3)))
+        credit = getattr(best_record.course_id, 'credit', 3)
         if grade_factor >=  0:
             if grade_factor != 0:
-                grade_factor =  Decimal(str(grade_factor))
                 total_points += grade_factor * credit
                 total_credits += credit
-            total_unit += credit
-    return round_from_last_decimal(Decimal('10') * (total_points / total_credits)) if total_credits else 0, total_unit, (total_points*10)
+            total_unit += credit    
+    return round_from_last_decimal(10 * (total_points / total_credits)) if total_credits else 0, total_unit
 
 def parse_academic_year(academic_year, semester_type):
     """
@@ -220,7 +213,7 @@ def parse_academic_year(academic_year, semester_type):
 def is_valid_grade(grade: str, course_code: str) -> bool:
     """
     Returns True if the grade is valid for the given course code.
-    Special grades apply to PR4001, PR4002 and BTP4001.
+    Special grades apply to PR4001 and BTP4001.
     """
     if not grade or not course_code:
         return False
@@ -228,31 +221,9 @@ def is_valid_grade(grade: str, course_code: str) -> bool:
     code = course_code.strip().upper()
     grade = grade.strip().upper()
 
-    if code in {"PR4001","PR4002", "BTP4001"}:
+    if code in {"PR4001", "BTP4001"}:
         return grade in PBI_AND_BTP_ALLOWED_GRADES
     return grade in ALLOWED_GRADES
-
-
-def gather_related_registrations(initial_reg, max_semester):
-    """
-    Using BFS, collect all course_registration objects related by replacements
-    up to the given semester, ignoring semester_type.
-    """
-    related = set()
-    queue = [initial_reg]
-    while queue:
-        reg = queue.pop(0)
-        if reg.id in related:
-            continue
-        related.add(reg.id)
-        olds = course_replacement.objects.filter(old_course_registration=reg)
-        news = course_replacement.objects.filter(new_course_registration=reg)
-        for rep in list(olds) + list(news):
-            for neighbor in (rep.old_course_registration, rep.new_course_registration):
-                if (neighbor.student_id == initial_reg.student_id and
-                    neighbor.semester_id.semester_no <= max_semester):
-                    queue.append(neighbor)
-    return course_registration.objects.filter(id__in=related).exclude(id=initial_reg.id)
 
 
 @api_view(['POST'])
@@ -923,8 +894,8 @@ class GenerateTranscript(APIView):
         try:
             student = Student.objects.get(id_id=student_id)
             name = student.id.user.first_name
-            cpi, tu, _ = calculate_cpi_for_student(student, semester_number, semester_type)
-            spi, su, _ = calculate_spi_for_student(student, semester_number, semester_type)
+            cpi, tu = calculate_cpi_for_student(student, semester_number, semester_type)
+            spi, su = calculate_spi_for_student(student, semester_number, semester_type)
         except:
             return Response({"error": "Student ID does not exist."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -937,8 +908,8 @@ class GenerateTranscript(APIView):
                 "course_name": course.name,
                 "course_code": course.code,
                 "credit": course.credit,
-                "grade": reg.grade,
-                "points": Decimal(str(grade_conversion.get(reg.grade, 0) * 10)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP),
+                "grade":"" if reg.course_id.code in ("PR4001", "BTP4001") else reg.grade,
+                "points": grade_conversion.get(reg.grade, 0)*10,
             }
 
         response_data = {
@@ -1032,24 +1003,25 @@ class GenerateTranscriptForm(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        programme = request.data.get('programme')
         batch = request.data.get('batch')
         specialization = request.data.get('specialization')
         semester = request.data.get('semester')
 
-        if not batch or not semester:
+        if not programme or not batch or not semester:
             return Response(
-                {"error": "batch, and semester are required fields."},
+                {"error": "Programme, batch, and semester are required fields."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # Use the batch from the Batch table (passed as ID).
         if specialization:
             students = Student.objects.filter(
-                batch_id=batch, specialization=specialization
+                programme=programme, batch_id=batch, specialization=specialization
             ).order_by('id')
         else:
             students = Student.objects.filter(
-                batch_id=batch
+                programme=programme, batch_id=batch
             ).order_by('id')
 
         return Response({
@@ -1198,18 +1170,6 @@ class GenerateResultAPI(APIView):
             cell.font = Font(bold=True)
             cell.fill = header_fill
 
-            cell = ws.cell(row=1, column=col_idx+4)
-            cell.value = "SP"
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.font = Font(bold=True)
-            cell.fill = header_fill
-
-            cell = ws.cell(row=1, column=col_idx+5)
-            cell.value = "TP"
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            cell.font = Font(bold=True)
-            cell.fill = header_fill
-
             # Ensure full header rows (1 to 4) are highlighted.
             max_col = ws.max_column
             for row in range(1, 5):
@@ -1230,49 +1190,12 @@ class GenerateResultAPI(APIView):
                 student_grades = Student_grades.objects.filter(
                     roll_no=student.id_id,
                     course_id_id__in=course_ids,
-                    semester_type=semester_type,
                     semester=semester
                 )
-                grades_map = {g.course_id_id: g for g in student_grades}
+                grades_map = {grade.course_id_id: (grade.grade, grade.remarks) for grade in student_grades}
                 col_ptr = 3
                 for course in courses:
-                    grade_entry = grades_map.get(course.id)
-                    grade_val = grade_entry.grade if grade_entry else '-'
-
-                    remark = '-'
-                    if grade_entry:
-                        reg = course_registration.objects.filter(
-                            student_id=student,
-                            course_id=course,
-                            semester_id__semester_no=semester,
-                            semester_type=semester_type,
-                            session=grade_entry.academic_year,
-                        ).first()
-                        if reg:
-                            related_regs = gather_related_registrations(reg, semester)
-                            attempts = []
-                            for r in related_regs:
-                                g = Student_grades.objects.filter(
-                                    roll_no=student.id_id,
-                                    course_id__code=r.course_id.code,
-                                    semester=r.semester_id.semester_no,
-                                    semester_type = r.semester_type,
-                                    academic_year = r.session
-                                ).order_by('-semester').first()
-                                if g:
-                                    attempts.append((r.course_id.code, g.grade))
-
-                            if len(attempts) >= 1:
-                                scored = sorted(
-                                    attempts,
-                                    key=lambda x: grade_conversion.get(x[1], -1),
-                                    reverse=True
-                                )
-                                first_code, first_grade = scored[0]
-                                if first_grade == 'F' or first_grade == 'X':
-                                    remark = 'R(BL)' if first_code == course.code else 'S(BL)'
-                                else:
-                                    remark = 'R(IM)' if first_code == course.code else 'S(IM)'
+                    grade_val, remark = grades_map.get(course.id, ("-", "-"))
                     ws.cell(row=row_idx, column=col_ptr).value = grade_val
                     ws.cell(row=row_idx, column=col_ptr+1).value = remark
                     for c in [col_ptr, col_ptr+1]:
@@ -1280,14 +1203,12 @@ class GenerateResultAPI(APIView):
                     col_ptr += 2
 
                 # Calculate SPI and CPI.
-                spi_val, SU, SP = calculate_spi_for_student(student, semester, semester_type)
-                cpi_val, TU, TP = calculate_cpi_for_student(student, semester, semester_type)
+                spi_val, SU = calculate_spi_for_student(student, semester, semester_type)
+                cpi_val, TU = calculate_cpi_for_student(student, semester, semester_type)
                 ws.cell(row=row_idx, column=col_ptr).value = spi_val
                 ws.cell(row=row_idx, column=col_ptr+1).value = cpi_val
                 ws.cell(row=row_idx, column=col_ptr+2).value = SU
                 ws.cell(row=row_idx, column=col_ptr+3).value = TU
-                ws.cell(row=row_idx, column=col_ptr+4).value = SP
-                ws.cell(row=row_idx, column=col_ptr+5).value = TP
                 for c in [col_ptr, col_ptr+1]:
                     ws.cell(row=row_idx, column=c).alignment = Alignment(horizontal="center", vertical="center")
                 row_idx += 1
@@ -2233,6 +2154,7 @@ class CheckResultView(APIView):
         roll_number = request.user.username
         semester_no = request.data.get('semester_no')
         semester_type = request.data.get('semester_type')
+        print(semester_type, semester_no)
 
         if semester_no is None or semester_type is None:
             return JsonResponse(
@@ -2249,16 +2171,16 @@ class CheckResultView(APIView):
             )
 
         # Find the announcement for this batch, number and type
-        ann = ResultAnnouncement.objects.filter(
-            batch=student.batch_id,
-            semester=semester_no,
-        ).first()
+        # ann = ResultAnnouncement.objects.filter(
+        #     batch=student.batch_id,
+        #     semester=semester_no,
+        # ).first()
 
-        if not ann or not ann.announced:
-            return JsonResponse(
-                {"success": False, "message": "Results not announced yet."},
-                status=200,
-            )
+        # if not ann or not ann.announced:
+        #     return JsonResponse(
+        #         {"success": False, "message": "Results not announced yet."},
+        #         status=200,
+        #     )
 
         # Filter grades on both fields
         grades_info = Student_grades.objects.filter(
@@ -2267,8 +2189,8 @@ class CheckResultView(APIView):
             semester_type=semester_type
         ).select_related('course_id')
 
-        spi, su, _ = calculate_spi_for_student(student, semester_no, semester_type)
-        cpi, tu, _ = calculate_cpi_for_student(student, semester_no, semester_type)
+        spi, su = calculate_spi_for_student(student, semester_no, semester_type)
+        cpi, tu = calculate_cpi_for_student(student, semester_no, semester_type)
 
         response_data = {
             "success": True,
@@ -2278,8 +2200,8 @@ class CheckResultView(APIView):
                     "courseid": grade.course_id.id,
                     "coursename": grade.course_id.name,
                     "credits": grade.course_id.credit,
-                    "grade":grade.grade,
-                    "points": Decimal(str(grade_conversion.get(grade.grade, 0) * 10)).quantize(Decimal('0.1'), rounding=ROUND_HALF_UP),
+                    "grade":"" if grade.course_id.code in ("PR4001", "BTP4001") else grade.grade,
+                    "points": grade_conversion.get(grade.grade, 0)*10,
                 }
                 for grade in grades_info
             ],

@@ -2,12 +2,10 @@ import datetime
 
 from django.db import models
 from django.contrib.postgres.fields import ArrayField
-from django.contrib.auth import get_user_model
 from applications.academic_information.models import Course, Student, Curriculum
-from applications.programme_curriculum.models import Course as Courses, Semester, CourseSlot, Batch
+from applications.programme_curriculum.models import Course as Courses, Semester, CourseSlot
 from applications.globals.models import DepartmentInfo, ExtraInfo, Faculty
 from django.utils import timezone
-
 
 
 class Constants:
@@ -869,57 +867,236 @@ class CourseReplacementRequest(models.Model):
         return f"{self.old_course.code}→{self.new_course.code} [{self.status}]"
     
 
-class BatchChangeHistory(models.Model):
-    student = models.ForeignKey(Student, on_delete=models.CASCADE)
-    old_batch = models.ForeignKey(Batch, on_delete=models.PROTECT, related_name="history_old")
-    new_batch = models.ForeignKey(Batch, on_delete=models.PROTECT, related_name="history_new")
-    changed_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-changed_at"]
-
-
-SEMESTER_CHOICES = [
-    ("Odd Semester", "Odd Semester"),
-    ("Even Semester", "Even Semester"),
-    ("Summer Semester", "Summer Semester"),
-]
-
-class FeedbackQuestion(models.Model):
-    SECTION_CHOICES = [
-        ("contents", "Course Contents"),
-        ("instructor", "Course Instructor"),
-        ("tutorial", "Tutorial"),
-        ("lab", "Lab Instructor"),
-        ("attendance", "Attendance"),
+class ThesisTopic(models.Model):
+    """Central thesis record with student submission fields and approval status."""
+    STATUS_CHOICES = [
+        ('supervisor_pending', 'Pending with Supervisor'),
+        ('hod_pending', 'Approved by Supervisor, Pending with HOD'),
+        ('hod_rejected', 'Rejected by HOD, Returned to Supervisor'),
+        ('dean_pending', 'Approved by HOD, Pending with Dean'),
+        ('dean_rejected', 'Rejected by Dean, Returned to HOD'),
+        ('dean_approved', 'Approved by Dean'),
     ]
-    section = models.CharField(max_length=20, choices=SECTION_CHOICES)
-    text    = models.TextField()
-    order   = models.PositiveIntegerField()
+
+
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    supervisor = models.ForeignKey(Faculty, related_name='theses_supervised', on_delete=models.CASCADE)
+    co_supervisor = models.ForeignKey(Faculty, related_name='theses_cosupervised', on_delete=models.CASCADE, null=True, blank=True)
+    supervisor_consented    = models.BooleanField(default=False)
+    co_supervisor_consented = models.BooleanField(default=False)
+
+    category = models.CharField(max_length=20, choices=[
+        ('Regular', 'Regular'),
+        ('Sponsored', 'Sponsored'),
+        ('External', 'External')
+    ])
+    broad_area = models.CharField(max_length=200)
+    research_theme = models.TextField()
+
+    external_name = models.CharField(max_length=100, blank=True)
+    external_email = models.EmailField(blank=True)
+    external_discipline = models.CharField(max_length=100, blank=True)
+    external_institution = models.CharField(max_length=200, blank=True)
+
+    pg_single = models.PositiveIntegerField(default=0)
+    pg_shared = models.PositiveIntegerField(default=0)
+    phd_single = models.PositiveIntegerField(default=0)
+    phd_shared = models.PositiveIntegerField(default=0)
+
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='supervisor_pending')
+    hod_remarks = models.TextField(blank=True)
+    dean_remarks = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        name = self.student.id.user.get_full_name()
+        theme = self.research_theme[:30]
+        return f"{name} — {theme}"
+
+
+class CommitteeMember(models.Model):
+    """RPC committee member for each thesis."""
+    thesis = models.ForeignKey(ThesisTopic, related_name='committee', on_delete=models.CASCADE)
+    member = models.ForeignKey(Faculty, on_delete=models.CASCADE)
+
     class Meta:
-        ordering = ["section", "order"]
+        unique_together = ('thesis', 'member')
 
-class FeedbackOption(models.Model):
-    question = models.ForeignKey(FeedbackQuestion, on_delete=models.CASCADE, related_name="options")
-    text     = models.CharField(max_length=50)
-    order    = models.PositiveIntegerField()
+    def __str__(self):
+        return f"{self.member} on {self.thesis}"
+    
+class SeminarEntry(models.Model):
+    thesis     = models.ForeignKey(ThesisTopic, on_delete=models.CASCADE, related_name='seminars')
+    version    = models.PositiveSmallIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    STATUS_CHOICES = [
+        ('draft',       'Draft'),
+        ('rpc_pending', 'Pending RPC Consent'),
+        ('rpc_approved','Approved'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+
+    # 1–6: logistics
+    seminar_date  = models.DateField(null=True, blank=True)
+    seminar_time  = models.TimeField(null=True, blank=True)
+    seminar_venue = models.CharField(max_length=200, blank=True)
+
+    # 7–9: summaries
+    summary_prev = models.TextField(blank=True)
+    summary_curr = models.TextField(blank=True)
+    future_plan  = models.TextField(blank=True)
+    upload_doc   = models.FileField(upload_to='seminar_docs/', null=True, blank=True)
+
+
+    quality         = models.CharField(
+        max_length=20,
+        choices=[('Excellent','Excellent'),
+                 ('Good','Good'),
+                 ('Sat','Satisfactory'),
+                 ('Unsat','Unsatisfactory')],
+        blank=True
+    )
+    quantity        = models.CharField(
+        max_length=20,
+        choices=[('Enough','Enough'),
+                 ('Just','Just Sufficient'),
+                 ('Insuff','Insufficient')],
+        blank=True
+    )
+    overall_grade   = models.CharField(
+        max_length=2,
+        choices=[('S','S'), ('X','X')],
+        blank=True
+    )
+    expected_period = models.CharField(
+        max_length=2,
+        choices=[('1','1 year'),
+                 ('2','2 years'),
+                 ('3','3 years'),
+                 ('4','4 years')],
+        blank=True
+    )
+    rec_assist      = models.CharField(
+        max_length=3,
+        choices=[('Yes','Yes'),
+                 ('No','No'),
+                 ('NA','Not Applicable')],
+        blank=True
+    )
+    rec_enhance     = models.CharField(
+        max_length=3,
+        choices=[('Yes','Yes'),
+                 ('No','No'),
+                 ('NA','Not Applicable')],
+        blank=True
+    )
+    rec_repeat      = models.CharField(
+        max_length=3,
+        choices=[('Yes','Yes'),
+                 ('NA','Not Applicable')],
+        blank=True
+    )
+    rec_open        = models.CharField(
+        max_length=3,
+        choices=[('Yes','Yes'),
+                 ('No','No')],
+        blank=True
+    )
+
+
+    def __str__(self):
+        return f"Seminar {self.version} for {self.thesis}"
+
+class PublicationCount(models.Model):
+    seminar    = models.ForeignKey(SeminarEntry, related_name='pub_counts', on_delete=models.CASCADE)
+    category   = models.CharField(max_length=50, choices=[
+        ('Journal','Journal'),
+        ('Conference','Conference'),
+        ('Submitted','Submitted'),
+    ])
+    submitted  = models.PositiveIntegerField(default=0)
+    accepted   = models.PositiveIntegerField(default=0)
+    published  = models.PositiveIntegerField(default=0)
+
     class Meta:
-        ordering = ["order"]
+        unique_together = ('seminar','category')
 
-class FeedbackResponse(models.Model):
-    question      = models.ForeignKey(FeedbackQuestion, on_delete=models.CASCADE)
-    option        = models.ForeignKey(FeedbackOption, on_delete=models.CASCADE, null=True, blank=True)
-    text_answer   = models.TextField(blank=True)
-    course        = models.ForeignKey(Courses, on_delete=models.CASCADE)
-    section       = models.CharField(max_length=20, choices=FeedbackQuestion.SECTION_CHOICES)
-    session       = models.CharField(max_length=9)
-    semester_type = models.CharField(max_length=20, choices=SEMESTER_CHOICES)
-    submitted_at  = models.DateTimeField(auto_now_add=True)
-
-class FeedbackFilled(models.Model):
-    student      = models.ForeignKey(Student, on_delete=models.CASCADE)
-    semester_no  = models.PositiveIntegerField()
-    filled_at    = models.DateTimeField(auto_now_add=True)
+class SeminarConsent(models.Model):
+    seminar   = models.ForeignKey(SeminarEntry, related_name='consents', on_delete=models.CASCADE)
+    member    = models.ForeignKey(Faculty, on_delete=models.CASCADE)
+    consented = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ("student", "semester_no")
+        unique_together = ('seminar','member')
+
+class SeminarComment(models.Model):
+    seminar   = models.ForeignKey(SeminarEntry, related_name='comments', on_delete=models.CASCADE)
+    member    = models.ForeignKey(Faculty, on_delete=models.CASCADE)
+    text      = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('seminar','member')
+        ordering = ['-timestamp']
+
+
+import uuid
+
+def upload_synopsis(instance, filename):
+    ext = filename.split('.')[-1]
+    return f"synopsis/{instance.file_token}.{ext}"
+
+def upload_report(instance, filename):
+    ext = filename.split('.')[-1]
+    return f"reports/{instance.file_token}.{ext}"
+
+
+class ThesisSubmission(models.Model):
+    thesis         = models.OneToOneField(ThesisTopic, on_delete=models.CASCADE, related_name='submission')
+    file_token     = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    synopsis      = models.FileField(upload_to=upload_synopsis)
+    thesis_report = models.FileField(upload_to=upload_report)
+    submitted_at   = models.DateTimeField(auto_now_add=True)
+    supervisor     = models.ForeignKey('auth.User', null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name='supervised_subs')
+    supervisor_approved_at = models.DateTimeField(null=True, blank=True)
+    director       = models.ForeignKey('auth.User', null=True, blank=True,
+                                       on_delete=models.SET_NULL, related_name='directed_subs')
+    director_approved_at = models.DateTimeField(null=True, blank=True)
+    status         = models.CharField(max_length=30, default='submitted')
+
+    def __str__(self):
+        return f"Submission for {self.thesis.research_theme}"
+
+# 1.3 Review invitations
+class ReviewInvitation(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('rejected', 'Rejected'),
+        ('completed', 'Completed'),
+        ('expired', 'Expired'),
+    ]
+    submission      = models.ForeignKey(ThesisSubmission, on_delete=models.CASCADE)
+    prof_name       = models.CharField(max_length=255)
+    prof_position   = models.CharField(max_length=255)
+    prof_address    = models.TextField()
+    prof_phone      = models.CharField(max_length=20)
+    prof_email      = models.EmailField()
+    prof_time_ranking = models.PositiveSmallIntegerField(null=True, blank=True)
+    priority        = models.PositiveSmallIntegerField(default=0)
+    token           = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    last_sent       = models.DateTimeField(null=True, blank=True)
+    review_form_sent= models.DateTimeField(null=True, blank=True)
+    expires_at      = models.DateTimeField(null=True, blank=True)
+
+    def is_expired(self):
+        return self.expires_at and timezone.now() >= self.expires_at
+
+    def is_finalized(self):
+        return self.status in ['completed', 'expired', 'rejected']
+
+    class Meta:
+        unique_together = [('submission', 'priority')]

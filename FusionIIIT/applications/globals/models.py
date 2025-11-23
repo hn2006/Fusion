@@ -185,6 +185,29 @@ class HoldsDesignation(models.Model):
 
     class Meta:
         unique_together = [['user', 'designation'], ['working', 'designation']]
+    
+
+    @staticmethod
+    def hod_for_specialization(spec: str):
+        """
+        Given a student's specialization string (e.g. 'AI/ML' or 'Power and Control'),
+        derive the department code and match designation.name like 'HOD(CSE)'.
+        """
+        spec_to_dept = {'AI/ML':'CSE','Data Science':'CSE','Power and Control':'ECE', 'CSE':'CSE'}
+        dept = spec_to_dept.get(spec)
+        if not dept:
+            return None
+
+        print(spec, dept)
+        # Match designation.name containing "HOD" and dept
+        qs = HoldsDesignation.objects.filter(
+            designation__name__iregex=rf"hod\W*{dept}\W*"
+        ).select_related('working')
+        print(qs)
+        if not qs.exists():
+            return None
+
+        return getattr(qs.last().working, 'username', None)
 
     def __str__(self):
         return '{} - {}'.format(self.user.username, self.designation)

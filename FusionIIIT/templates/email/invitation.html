@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <p>Dear {{ prof_name }},</p>
+    <p>You are invited to review the thesis titled <strong>{{ thesis_title }}</strong>.</p>
+    <p>
+      <a href="{{ accept_url }}">Accept Review</a> |
+      <a href="{{ reject_url }}">Reject Review</a>
+    </p>
+    <p><em>Please do not share this link with anyone.</em></p>
+    <p>This invitation expires on {{ expires_at }}.</p>
+    <p>Thank you,<br/>Thesis Committee</p>
+  </body>
+</html>
